@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+:root {
+	color-scheme: dark;
+}
+
+html,
+body {
+	height: 100%;
+}
+
+body {
+	margin: 0;
+	font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+		"Segoe UI Emoji";
+	background: #09090b;
+	-webkit-tap-highlight-color: transparent;
+}
+
+/* Hacer que los sliders se vean bien en móvil */
+input[type='range'].range-accent {
+	width: 100%;
+	accent-color: #38bdf8; /* sky-400 */
+}
+
+/* Evitar zoom raro en iOS al editar inputs */
+input,
+button {
+	font-size: 16px;
+}
