@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import MusicPlayer from './MusicPlayer'
 
 type Track = {
 	id: number
@@ -45,6 +46,11 @@ export default function App() {
 	const [isPlaying, setIsPlaying] = useState(false)
 	const [currentTime, setCurrentTime] = useState(0)
 	const [audioDuration, setAudioDuration] = useState(0)
+	const [volume, setVolume] = useState(0.8)
+	const [offlineReady, setOfflineReady] = useState(false)
+	const [showOfflineMessage, setShowOfflineMessage] = useState(false)
+	const [downloadProgress, setDownloadProgress] = useState(0)
+	const [isDownloading, setIsDownloading] = useState(false)
 	const checkIntervalRef = useRef<number | null>(null)
 
 	const handleStop = () => {
@@ -62,7 +68,7 @@ export default function App() {
 
 	useEffect(() => {
 		audioRef.current = new Audio()
-		audioRef.current.volume = 0.8
+		audioRef.current.volume = volume
 
 		const audio = audioRef.current
 		audio.addEventListener('play', () => setIsPlaying(true))
@@ -71,10 +77,31 @@ export default function App() {
 		audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime))
 		audio.addEventListener('durationchange', () => setAudioDuration(audio.duration))
 
+		// Listen for PWA offline ready event
+		const handleOfflineReady = () => {
+			setOfflineReady(true)
+			setShowOfflineMessage(true)
+			setIsDownloading(false)
+			setTimeout(() => setShowOfflineMessage(false), 5000)
+		}
+
+		const handleDownloadProgress = (event: Event) => {
+			const customEvent = event as CustomEvent<{ progress: number; downloaded: number; total: number }>
+			const { progress } = customEvent.detail
+			setDownloadProgress(progress)
+			setIsDownloading(true)
+		}
+
+		window.addEventListener('swOfflineReady', handleOfflineReady)
+		window.addEventListener('swDownloadProgress', handleDownloadProgress)
+
 		return () => {
 			audio.pause()
 			audio.remove()
+			window.removeEventListener('swOfflineReady', handleOfflineReady)
+			window.removeEventListener('swDownloadProgress', handleDownloadProgress)
 		}
+	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [])
 
 
@@ -120,104 +147,167 @@ export default function App() {
 		return TRACKS.find(t => t.id === currentTrack)
 	}
 
+	const handlePlayPause = () => {
+		if (!audioRef.current) return
+		if (isPlaying) {
+			audioRef.current.pause()
+		} else {
+			audioRef.current.play()
+		}
+	}
+
+	const handleSeek = (time: number) => {
+		if (!audioRef.current) return
+		audioRef.current.currentTime = time
+	}
+
+	const handleNext = () => {
+		if (currentTrack === null) return
+		const currentIndex = TRACKS.findIndex(t => t.id === currentTrack)
+		const nextIndex = (currentIndex + 1) % TRACKS.length
+		playTrack(TRACKS[nextIndex].id)
+	}
+
+	const handlePrevious = () => {
+		if (currentTrack === null) return
+		const currentIndex = TRACKS.findIndex(t => t.id === currentTrack)
+		const prevIndex = currentIndex === 0 ? TRACKS.length - 1 : currentIndex - 1
+		playTrack(TRACKS[prevIndex].id)
+	}
+
+	const handleVolumeChange = (newVolume: number) => {
+		setVolume(newVolume)
+		if (audioRef.current) {
+			audioRef.current.volume = newVolume
+		}
+	}
+
 	const trackData = getCurrentTrackData()
 	const duration = trackData?.endTime ?? audioDuration
-	const displayTime = trackData ? currentTime - trackData.startTime : 0
 
 	return (
-		<div className="min-h-screen bg-zinc-950 text-zinc-100 pb-safe">
-			{/* Sticky Now Playing Bar */}
-			{trackData && (
-				<div className="sticky top-0 z-20 border-b border-white/10 bg-zinc-900/95 backdrop-blur-lg">
-					<div className="px-4 pt-3 pb-2">
-						<div className="flex items-center justify-between gap-3 mb-2">
-							<div className="min-w-0 flex-1">
-								<div className="text-xs font-medium text-sky-400 mb-0.5">REPRODUCIENDO</div>
-								<div className="text-base font-bold truncate">{trackData.name}</div>
-							</div>
-							<button
-								onClick={handleStop}
-								className="flex-shrink-0 w-12 h-12 rounded-full bg-red-500 active:bg-red-600 active:scale-95 transition flex items-center justify-center text-xl"
-							>
-								⏹️
-							</button>
-						</div>
-						
-						{/* Progress bar */}
-						<div className="space-y-1">
-							<div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
-								<div
-									className="h-full rounded-full bg-sky-500 transition-all"
-									style={{
-										width: `${Math.min(100, (displayTime / (trackData.endTime ?? duration)) * 100)}%`,
-									}}
-								/>
-							</div>
-							<div className="flex justify-between text-xs text-zinc-400 tabular-nums">
-								<span>{formatTime(displayTime)}</span>
-								<span>{formatTime(trackData.endTime ?? duration)}</span>
-							</div>
-						</div>
+		<div className="min-h-screen bg-white text-black">
+			{/* Download Progress Bar */}
+			{isDownloading && (
+				<div className="fixed top-0 left-0 right-0 z-50">
+					<div className="h-1 bg-gray-200">
+						<div 
+							className="h-full bg-green-500 transition-all duration-300"
+							style={{ width: `${downloadProgress}%` }}
+						/>
+					</div>
+					<div className="bg-white border-b border-gray-200 px-4 py-2 text-xs text-zinc-600 flex items-center gap-2">
+						<svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+							<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+							<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						Downloading songs for offline use... {Math.round(downloadProgress)}%
 					</div>
 				</div>
 			)}
 
-			{/* Header */}
-			<header className="sticky top-0 z-10 border-b border-white/10 bg-zinc-900/95 backdrop-blur-lg px-4 py-3">
-				<h1 className="text-xl font-bold">🎵 Pistas</h1>
-				<p className="text-xs text-zinc-500">{TRACKS.length} canciones</p>
-			</header>
-
-			{/* Track list */}
-			<main className="px-3 py-3 space-y-2">
-				{TRACKS.map(track => {
-					const isActive = currentTrack === track.id
-					const trackDuration = track.endTime ? track.endTime - track.startTime : null
-
-					return (
-						<button
-							key={track.id}
-							onClick={() => playTrack(track.id)}
-							className={`w-full rounded-2xl border-2 p-4 text-left transition-all active:scale-[0.98] ${
-								isActive
-									? 'border-sky-500 bg-sky-500/15 shadow-lg shadow-sky-500/20'
-									: 'border-white/10 bg-zinc-900/50 active:bg-zinc-900/70'
-							}`}
+			{/* Offline Ready Notification */}
+			{showOfflineMessage && (
+				<div className="fixed top-4 left-4 right-4 z-50 animate-slide-down">
+					<div className="bg-green-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3">
+						<svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<div className="flex-1">
+							<div className="font-semibold text-sm">All songs downloaded!</div>
+							<div className="text-xs opacity-90">You can now use the app offline</div>
+						</div>
+						<button 
+							onClick={() => setShowOfflineMessage(false)}
+							className="shrink-0 hover:opacity-75"
 						>
-							<div className="flex items-start gap-3">
-								{/* Play button icon */}
-								<div className={`flex-shrink-0 w-14 h-14 rounded-full flex items-center justify-center text-2xl transition ${
-									isActive && isPlaying
-										? 'bg-sky-500 shadow-lg shadow-sky-500/30'
-										: 'bg-white/10'
-								}`}>
-									{isActive && isPlaying ? '⏸️' : '▶️'}
-								</div>
-								
-								{/* Track info */}
-								<div className="min-w-0 flex-1 pt-1">
-									<div className="font-bold text-base leading-tight mb-1">
-										{track.id}. {track.name}
-									</div>
-									<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-400">
-										<span className="tabular-nums">
-											{formatTime(track.startTime)} → {track.endTime ? formatTime(track.endTime) : 'fin'}
-										</span>
-										{trackDuration !== null && (
-											<span className="px-2 py-0.5 rounded-full bg-white/10 text-zinc-300 font-medium tabular-nums">
-												{trackDuration}s
-											</span>
+							<svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+								<path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+							</svg>
+						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Main Content Area with bottom padding for music player */}
+			<div className={`pb-40 ${isDownloading ? 'pt-12' : ''}`}>
+				{/* Header */}
+				<header className="px-4 pt-4 pb-2 flex items-start justify-between">
+					<div>
+						<h1 className="text-2xl font-bold mb-1">Your Tracks</h1>
+						<p className="text-sm text-zinc-600">
+							{TRACKS.length} songs
+							{offlineReady && (
+								<span className="ml-2 text-green-600">• Offline ready</span>
+							)}
+						</p>
+					</div>
+					<button
+						onClick={() => window.location.reload()}
+						className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+						title="Refresh"
+					>
+						<svg className="w-6 h-6 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+					</button>
+				</header>
+
+				{/* All Tracks List */}
+				<main className="px-4 py-2">
+					<div className="space-y-1">
+						{TRACKS.map((track, index) => {
+							const isActive = currentTrack === track.id
+							const trackDuration = track.endTime ? track.endTime - track.startTime : null
+
+							return (
+								<button
+									key={track.id}
+									onClick={() => playTrack(track.id)}
+									className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all active:scale-98 ${
+										isActive ? 'bg-gray-100' : 'active:bg-gray-50'
+									}`}
+								>
+									<div className="w-8 text-zinc-600 text-sm text-center shrink-0">
+										{isActive && isPlaying ? (
+											<div className="flex items-center justify-center">
+												<svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+													<path d="M8 5v14l11-7z" />
+												</svg>
+											</div>
+										) : (
+											index + 1
 										)}
 									</div>
-								</div>
-							</div>
-						</button>
-					)
-				})}
-			</main>
+									<div className="flex-1 text-left min-w-0">
+										<div className={`font-medium text-sm truncate ${isActive ? 'text-green-600' : ''}`}>
+											{track.name}
+										</div>
+										<div className="text-xs text-zinc-500 truncate">
+											{formatTime(track.startTime)} → {track.endTime ? formatTime(track.endTime) : 'end'}
+											{trackDuration !== null && ` • ${trackDuration}s`}
+										</div>
+									</div>
+								</button>
+							)
+						})}
+					</div>
+				</main>
+			</div>
 
-			{/* Bottom spacing for safe area */}
-			<div className="h-6"></div>
+			{/* Music Player */}
+			<MusicPlayer
+				track={trackData ?? null}
+				isPlaying={isPlaying}
+				currentTime={currentTime}
+				duration={duration}
+				onPlayPause={handlePlayPause}
+				onSeek={handleSeek}
+				onNext={handleNext}
+				onPrevious={handlePrevious}
+				onVolumeChange={handleVolumeChange}
+				volume={volume}
+			/>
 		</div>
 	)
 }

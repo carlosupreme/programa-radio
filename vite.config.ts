@@ -12,11 +12,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['*.mp3'],
       manifest: {
-        name: 'Track Player',
-        short_name: 'Tracks',
-        description: 'Simple playlist with time ranges',
-        theme_color: '#09090b',
-        background_color: '#09090b',
+        name: 'Radio',
+        short_name: 'Radio',
+        description: 'Simple programa de radio',
+        theme_color: '#00ff00',
+        background_color: '#ffffff',
         display: 'standalone',
         icons: [
           {
@@ -32,18 +32,18 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'], // Exclude mp3 from precache
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,mp3}'], // Include mp3 files in precache
         maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50 MB
         runtimeCaching: [
           {
-            // Cache MP3 files on-demand (when first played)
+            // Cache MP3 files with CacheFirst strategy
             urlPattern: /\.mp3$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'audio-cache',
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+                maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
               },
               cacheableResponse: {
                 statuses: [0, 200],
